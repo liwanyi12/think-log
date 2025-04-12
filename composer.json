@@ -1,0 +1,19 @@
+{
+    "name": "lwi/thinklog",
+    "description": "日志记录",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Lwi\\Thinklog\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "李万义",
+            "email": "3357702725@qq.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "require": {}
+}
