@@ -24,7 +24,7 @@
         "php": "^7.3 || ^8.0"
     },
     "suggest": {
-        "topthink/framework": "^6.0 || ^8.0 (Required for ThinkPHP integration)",
+        "topthink/framework": "^6.0 || ^8.0 (Required for ThinkPHP integration)"
     },
     "autoload": {
         "psr-4": {
@@ -58,7 +58,5 @@
         "sort-packages": true,
         "optimize-autoloader": true,
         "platform-check": false
-    },
-    "minimum-stability": "stable",
-    "prefer-stable": true
+    }
 }
