@@ -1,12 +1,18 @@
 {
     "name": "lwi/thinklog",
-    "description": "日志记录",
+    "description": "高性能日志组件 - 原生支持 PSR-3，可选 ThinkPHP 深度集成",
     "type": "library",
     "license": "MIT",
-    "autoload": {
-        "psr-4": {
-            "Lwi\\Thinklog\\": "src/"
-        }
+    "keywords": [
+        "logging",
+        "psr-3",
+        "thinkphp",
+        "asynchronous"
+    ],
+    "homepage": "https://github.com/liwanyi12/think-log",
+    "support": {
+        "issues": "https://github.com/liwanyi12/think-log/issues",
+        "source": "https://github.com/liwanyi12/think-log"
     },
     "authors": [
         {
@@ -14,6 +20,54 @@
             "email": "3357702725@qq.com"
         }
     ],
-    "minimum-stability": "dev",
-    "require": {}
+    "require": {
+        "php": "^7.3 || ^8.0",
+        "psr/log": "^1.1 || ^2.0 || ^3.0",
+        "ext-json": "*"
+    },
+    "suggest": {
+        "topthink/framework": "^6.0 || ^8.0 (Required for ThinkPHP integration)",
+        "ext-redis": "* (Required for Redis queue support)"
+    },
+    "autoload": {
+        "psr-4": {
+            "Lwi\\Thinklog\\": "src/"
+        },
+        "files": [
+            "src/helpers.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Lwi\\Thinklog\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "post-install-cmd": [
+            "Lwi\\Thinklog\\Installer::postInstall"
+        ],
+        "post-update-cmd": [
+            "Lwi\\Thinklog\\Installer::postInstall"
+        ],
+        "test": "phpunit",
+        "cs-check": "phpcs --standard=PSR12 src tests",
+        "cs-fix": "phpcbf --standard=PSR12 src tests"
+    },
+    "extra": {
+        "thinkphp": {
+            "config": {
+                "log_async": "config/log_async.php"
+            },
+            "services": [
+                "Lwi\\Thinklog\\Service"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": true,
+        "platform-check": false
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
 }

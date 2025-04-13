@@ -25,18 +25,17 @@ trait AsyncModelLoggerTrait
     /**
      * 初始化配置
      */
-    protected static function init()
+    protected static function bootAsyncModelLoggerTrait()
     {
-        // TP5 的事件绑定
-        self::afterWrite(function($model) {
+        static::afterWrite(function ($model) {
             $model->handleModelEvent($model->isUpdate() ? 'updated' : 'created');
         });
 
-        self::afterDelete(function($model) {
+        static::afterDelete(function ($model) {
             $model->handleModelEvent('deleted');
         });
 
-        self::afterRestore(function($model) {
+        static::afterRestore(function ($model) {
             $model->handleModelEvent('restored');
         });
     }
@@ -44,16 +43,21 @@ trait AsyncModelLoggerTrait
     /**
      * 处理模型事件
      */
-    protected function handleModelEvent($event)
+    protected function handleModelEvent(string $event)
     {
-        $context = $this->buildLogContext($event);
+        try {
+            $context = $this->buildLogContext($event);
 
-        if ($this->shouldAsync()) {
-            $this->dispatchToTp5Queue($event, $context);
-        } else {
-            $this->writeSyncLog($event, $context);
+            if ($this->shouldAsync()) {
+                $this->dispatchToTp5Queue($event, $context);
+            } else {
+                $this->writeSyncLog($event, $context);
+            }
+        } catch (\Exception $e) {
+            $this->emergencyLog($event, [], $e);
         }
     }
+
 
     /**
      * 判断是否异步
@@ -69,7 +73,7 @@ trait AsyncModelLoggerTrait
             return false;
         }
 
-        return (bool) \liwanyi\thinklog\config('model_log.async', true);
+        return (bool)\liwanyi\thinklog\config('model_log.async', true);
     }
 
     /**
@@ -82,7 +86,7 @@ trait AsyncModelLoggerTrait
     {
         try {
             \think\Queue::push('app\\common\\job\\ModelLogJob', [
-                'event'   => $event,
+                'event' => $event,
                 'context' => $context
             ], \liwanyi\thinklog\config('model_log.queue_name', 'default'));
         } catch (\Exception $e) {
@@ -94,7 +98,7 @@ trait AsyncModelLoggerTrait
     /**
      * 同步写入日志
      */
-    protected function writeSyncLog( $event,  $context)
+    protected function writeSyncLog($event, $context)
     {
         try {
             \think\Log::write(
@@ -125,7 +129,7 @@ trait AsyncModelLoggerTrait
     /**
      * 紧急日志记录（当所有方式都失败时）
      */
-    protected function emergencyLog( $event,  $context, \Exception $e)
+    protected function emergencyLog($event, $context, \Exception $e)
     {
         $logContent = sprintf(
             "[%s] Model log failed: %s\nEvent: %s\nData: %s\n",
@@ -156,24 +160,24 @@ trait AsyncModelLoggerTrait
     /**
      * 构建日志上下文
      */
-    protected function buildLogContext( $event)
+    protected function buildLogContext($event)
     {
         return [
-            'model'  => get_class($this),
-            'table'  => $this->getTable(),
-            'pk'     => $this->getPk(),
-            'id'     => $this->getKey(),
-            'event'  => $event,
-            'time'   => time(),
-            'changes'=> $this->getChangedData(),
-            'ip'     => \Liwanyi\Utils2\models\trait\request()->ip()
+            'model' => get_class($this),
+            'table' => $this->getTable(),
+            'pk' => $this->getPk(),
+            'id' => $this->getKey(),
+            'event' => $event,
+            'time' => time(),
+            'changes' => $this->getChangedData(),
+            'ip' => \Liwanyi\Utils2\models\trait\request()->ip()
         ];
     }
 
     /**
      * 格式化日志消息
      */
-    protected function formatLogMessage( $event)
+    protected function formatLogMessage($event)
     {
         return sprintf(
             '[%s] %s %s(id:%s)',
