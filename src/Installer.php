@@ -7,46 +7,46 @@ use RuntimeException;
 
 class Installer
 {
-    /**
-     * Post-installation setup for ThinkPHP environment
-     *
-     * @throws RuntimeException When critical operations fail
-     */
     public static function postInstall()
     {
-        if (!class_exists(App::class)) {
-            return; // Skip if not in ThinkPHP environment
+        if (!self::isThinkPHPInstalled()) {
+            return;
         }
 
-        try {
-            self::ensureLogDirectory();
-            self::publishConfig();
-            self::ensureJobDirectory();
-        } catch (RuntimeException $e) {
-            // Log error or handle as needed
-            throw new RuntimeException("ThinkLog installation failed: " . $e->getMessage());
-        }
+        // 获取运行时路径（兼容TP5和TP6/8）
+        $runtimePath = self::getThinkRuntimePath();
+
+        self::ensureLogDirectory($runtimePath);
+        self::publishConfig();
+        self::ensureJobDirectory();
     }
 
-    /**
-     * Ensure log directory exists with proper permissions
-     *
-     * @throws RuntimeException When directory creation fails
-     */
-    protected static function ensureLogDirectory()
+    protected static function isThinkPHPInstalled(): bool
     {
-        $logDir = App::getRuntimePath() . 'api_errors';
+        // 同时检测 TP5 和 TP6/8 的入口类
+        return class_exists('think\App') || class_exists('think\facade\App');
+    }
 
+    protected static function getThinkRuntimePath(): string
+    {
+        // TP5 和 TP6/8 兼容的路径获取方式
+        if (class_exists('think\App')) {
+            return \think\App::getRuntimePath();
+        }
+
+        if (class_exists('think\facade\App')) {
+            return \think\facade\App::getRuntimePath();
+        }
+
+        throw new \RuntimeException('ThinkPHP runtime path not resolvable');
+    }
+
+    protected static function ensureLogDirectory(string $runtimePath)
+    {
+        $logDir = $runtimePath . 'api_errors';
         if (!is_dir($logDir)) {
-            if (!mkdir($logDir, 0755, true) && !is_dir($logDir)) {
-                throw new RuntimeException("Failed to create log directory: {$logDir}");
-            }
-
-            // Add .gitignore to prevent accidental log commits
-            $gitignorePath = $logDir.'/.gitignore';
-            if (file_put_contents($gitignorePath, "*\n!.gitignore") === false) {
-                throw new RuntimeException("Failed to create .gitignore in log directory");
-            }
+            mkdir($logDir, 0755, true);
+            file_put_contents($logDir . '/.gitignore', "*\n!.gitignore");
         }
     }
 
@@ -60,7 +60,7 @@ class Installer
         $target = config_path() . 'log_async.php';
 
         if (!file_exists($target)) {
-            $source = __DIR__.'/../config/log_async.php';
+            $source = __DIR__ . '/../config/log_async.php';
 
             if (!file_exists($source)) {
                 throw new RuntimeException("Missing package config template: {$source}");
@@ -87,7 +87,7 @@ class Installer
             }
 
             // Add .gitignore to maintain empty directory
-            $gitignorePath = $jobDir.'/.gitignore';
+            $gitignorePath = $jobDir . '/.gitignore';
             if (file_put_contents($gitignorePath, "*\n!.gitignore") === false) {
                 throw new RuntimeException("Failed to create .gitignore in job directory");
             }
