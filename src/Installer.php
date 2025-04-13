@@ -5,7 +5,6 @@ namespace Lwi\Thinklog;
 class Installer
 {
 
-
     public static function postInstall()
     {
         // 创建日志目录
