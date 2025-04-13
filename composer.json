@@ -6,8 +6,7 @@
     "keywords": [
         "logging",
         "psr-3",
-        "thinkphp",
-        "asynchronous"
+        "thinkphp"
     ],
     "homepage": "https://github.com/liwanyi12/think-log",
     "support": {
@@ -21,10 +20,9 @@
         }
     ],
     "require": {
-        "php": "^7.3 || ^8.0"
+        "php": "^7.1 || ^8.0"
     },
     "suggest": {
-        "topthink/framework": "^6.0 || ^8.0 (Required for ThinkPHP integration)"
     },
     "autoload": {
         "psr-4": {
@@ -34,25 +32,7 @@
     },
 
     "scripts": {
-        "post-install-cmd": [
-            "Lwi\\Thinklog\\Installer::postInstall"
-        ],
-        "post-update-cmd": [
-            "Lwi\\Thinklog\\Installer::postInstall"
-        ],
-        "test": "phpunit",
-        "cs-check": "phpcs --standard=PSR12 src tests",
-        "cs-fix": "phpcbf --standard=PSR12 src tests"
-    },
-    "extra": {
-        "thinkphp": {
-            "config": {
-                "log_async": "config/log_async.php"
-            },
-            "services": [
-                "Lwi\\Thinklog\\Service"
-            ]
-        }
+
     },
     "config": {
         "sort-packages": true,
