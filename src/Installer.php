@@ -7,18 +7,29 @@ use RuntimeException;
 
 class Installer
 {
+
     public static function postInstall()
     {
+        // 在 postInstall() 开头添加调试代码
+        echo "[ThinkLog] Starting installation...\n";
         if (!self::isThinkPHPInstalled()) {
+            echo "[ThinkLog] ThinkPHP not detected, skipping installation\n";
             return;
         }
 
-        // 获取运行时路径（兼容TP5和TP6/8）
-        $runtimePath = self::getThinkRuntimePath();
+        try {
+            $runtimePath = self::getThinkRuntimePath();
+            echo "[ThinkLog] Runtime path: {$runtimePath}\n";
 
-        self::ensureLogDirectory($runtimePath);
-        self::publishConfig();
-        self::ensureJobDirectory();
+            self::ensureLogDirectory($runtimePath);
+            self::publishConfig();
+            self::ensureJobDirectory();
+
+            echo "[ThinkLog] Installation completed successfully\n";
+        } catch (\Exception $e) {
+            echo "[ThinkLog] ERROR: " . $e->getMessage() . "\n";
+            throw $e;
+        }
     }
 
     protected static function isThinkPHPInstalled(): bool
@@ -79,7 +90,9 @@ class Installer
      */
     protected static function ensureJobDirectory()
     {
+
         $jobDir = app_path() . 'common/job';
+        var_dump($jobDir); // 检查路径是否正确
 
         if (!is_dir($jobDir)) {
             if (!mkdir($jobDir, 0755, true) && !is_dir($jobDir)) {
