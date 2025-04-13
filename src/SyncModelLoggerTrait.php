@@ -2,167 +2,302 @@
 
 namespace Lwi\Thinklog;
 
-trait SyncModelLoggerTrait
+use think\Exception;
+use think\Response;
+use think\facade\Log;
+use think\facade\Request;
+use Throwable;
+
+trait ApiErrorLoggerTrait
 {
-    /**
-     * 需要忽略记录的字段
-     * @var array
-     */
-    protected $logExceptFields = ['update_time', 'update_at'];
+    // region 配置参数
+    protected $logSensitiveFields = [
+        'password', 'token', 'credit_card'
+    ];
 
-    /**
-     * 初始化模型事件监听
-     */
-    protected static function bootSyncModelLoggerTrait()
+    protected $httpStatusMap = [
+        'think\exception\ValidateException' => 422,
+        'think\exception\AuthException' => 401,
+        'think\exception\HttpException' => 404
+    ];
+    // endregion
+
+    // region 核心方法
+    public function handleApiError(Throwable $e): Response
     {
-        static::afterWrite(function ($model) {
-            $model->handleModelEvent($model->isUpdate() ? 'updated' : 'created');
-        });
-
-        static::afterDelete(function ($model) {
-            $model->handleModelEvent('deleted');
-        });
-
-        static::afterRestore(function ($model) {
-            $model->handleModelEvent('restored');
-        });
+        $requestId = $this->generateAndStoreRequestId();
+        $statusCode = $this->determineHttpStatusCode($e);
+        $response = $this->buildStandardResponse($e, $statusCode, $requestId);
+        $this->logApiError($e, $response);
+        return $response;
     }
 
-    /**
-     * 处理模型事件
-     * @param string $event 事件名称
-     */
-    protected function handleModelEvent(string $event)
+    public function logApiError(Throwable $e, Response $response): void
     {
         try {
-            $context = $this->buildLogContext($event);
-            $this->writeSyncLog($event, $context);
-        } catch (\Exception $e) {
-            $this->emergencyLog($event, [], $e);
+            $context = $this->buildLogContext($e, $response);
+            $this->writeLog($context);
+        } catch (Throwable $logException) {
+            $this->emergencyLog($context ?? [], $logException);
         }
     }
 
-    /**
-     * 同步写入日志
-     * @param string $event 事件名称
-     * @param array $context 日志上下文
-     */
-    protected function writeSyncLog(string $event, array $context)
+    protected function generateAndStoreRequestId(): string
     {
-        try {
-            // 获取当前日志通道
-            $channel = config('log_async.channel') ?? 'model';
-
-            \think\Log::channel($channel)->write(
-                $this->formatLogMessage($event),
-                'info',
-                $this->filterContext($context)
-            );
-        } catch (\Exception $e) {
-            $this->emergencyLog($event, $context, $e);
-        }
+        $requestId = md5(uniqid(microtime(true), true));
+        Request::instance()->requestId = $requestId; // 关键：存储到请求对象
+        return $requestId;
     }
 
-    /**
-     * 过滤敏感字段
-     * @param array $context 原始上下文
-     * @return array 过滤后的上下文
-     */
-    protected function filterContext(array $context): array
-    {
-        if (!empty($this->logExceptFields)) {
-            $context['changes'] = array_diff_key(
-                $context['changes'] ?? [],
-                array_flip($this->logExceptFields)
-            );
-        }
-        return $context;
-    }
-
-    /**
-     * 紧急日志记录（当主日志记录失败时）
-     * @param string $event 事件名称
-     * @param array $context 日志上下文
-     * @param \Exception $e 异常对象
-     */
-    protected function emergencyLog(string $event, array $context, \Exception $e)
-    {
-        try {
-            $logContent = sprintf(
-                "[%s] Model log failed: %s\nEvent: %s\nData: %s\nTrace:\n%s\n",
-                date('Y-m-d H:i:s'),
-                $e->getMessage(),
-                $event,
-                json_encode($context, JSON_UNESCAPED_UNICODE),
-                $e->getTraceAsString()
-            );
-
-            $logPath = $this->getRuntimePath() . 'model_emergency.log';
-
-            file_put_contents(
-                $logPath,
-                $logContent,
-                FILE_APPEND
-            );
-        } catch (\Exception $fallbackException) {
-            // 终极回退方案：错误日志
-            error_log(sprintf(
-                "Emergency log failed: %s\nOriginal error: %s",
-                $fallbackException->getMessage(),
-                $e->getMessage()
-            ));
-        }
-    }
-
-    /**
-     * 构建日志上下文
-     * @param string $event 事件名称
-     * @return array 日志上下文
-     */
-    protected function buildLogContext(string $event): array
+    // region 上下文构建
+    protected function buildLogContext(Throwable $e, Response $response): array
     {
         return [
-            'model'  => get_class($this),
-            'table'  => $this->getTable(),
-            'pk'     => $this->getPk(),
-            'id'     => $this->getKey(),
-            'event'  => $event,
-            'time'   => time(),
-            'changes'=> $this->getChangedData(),
-            'ip'     => request()->ip()
+            'request_id' => Request::instance()->requestId ?? 'null',
+            'request' => $this->getRequestInfo(),
+            'error' => $this->getErrorDetails($e),
+            'response' => $this->getResponseInfo($response),
+            'system' => $this->getSystemInfo(),
+            'timestamp' => microtime(true)
         ];
     }
 
-    /**
-     * 格式化日志消息
-     * @param string $event 事件名称
-     * @return string 格式化后的日志消息
-     */
-    protected function formatLogMessage(string $event): string
+    protected function getRequestInfo(): array
+    {
+        return [
+            'method' => Request::method(),
+            'url' => Request::url(),
+            'ip' => Request::ip(),
+            'headers' => $this->filterHeaders(Request::header()),
+            'params' => $this->filterParams(Request::param())
+        ];
+    }
+
+    protected function getErrorDetails(Throwable $e): array
+    {
+        return [
+            'code' => $e->getCode(),
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $this->formatTrace($e->getTrace())
+        ];
+    }
+
+    protected function getResponseInfo(Response $response): array
+    {
+        return [
+            'status' => $response->getCode(),
+            'data' => $this->formatResponseData($response),
+            'headers' => $response->getHeader()
+        ];
+    }
+
+    protected function getSystemInfo(): array
+    {
+        return [
+            'php_version' => PHP_VERSION,
+            'framework' => 'ThinkPHP ' . $this->getFrameworkVersion(),
+            'memory_usage' => round(memory_get_usage(true) / 1024 / 1024, 2) . 'MB'
+        ];
+    }
+    // endregion
+
+    // region 数据处理
+    protected function filterParams(array $params): array
+    {
+        foreach ($this->logSensitiveFields as $field) {
+            if (isset($params[$field])) {
+                $params[$field] = '******';
+            }
+        }
+        return $params;
+    }
+
+    protected function filterHeaders(array $headers): array
+    {
+        $sensitiveHeaders = ['authorization', 'cookie'];
+        return array_map(function ($value, $key) use ($sensitiveHeaders) {
+            return in_array(strtolower($key), $sensitiveHeaders) ? '******' : $value;
+        }, $headers, array_keys($headers));
+    }
+
+    protected function formatTrace(array $trace): array
+    {
+        return array_map(function ($item) {
+            return [
+                'file' => $item['file'] ?? '',
+                'line' => $item['line'] ?? 0,
+                'function' => $item['function'] ?? '',
+                'class' => $item['class'] ?? ''
+            ];
+        }, $trace);
+    }
+
+    protected function formatResponseData(Response $response)
+    {
+        $content = $response->getContent();
+
+        if ($this->isValidJson($content)) {
+            $data = json_decode($content, true);
+            return $this->filterResponseData($data);
+        }
+
+        return is_string($content)
+            ? mb_substr($content, 0, 500)
+            : $content;
+    }
+
+    protected function filterResponseData($data)
+    {
+        if (!is_array($data)) return $data;
+
+        foreach ($this->logSensitiveFields as $field) {
+            if (isset($data[$field])) {
+                $data[$field] = '​**​​**​​**​';
+            }
+        }
+        return $data;
+    }
+    // endregion
+
+    // region 日志处理
+    protected function writeLog(array $context): void
+    {
+        Log::error($this->formatLogMessage($context), $context);
+    }
+
+    protected function formatLogMessage(array $context): string
     {
         return sprintf(
-            '[%s] %s %s(id:%s)',
-            strtoupper($event),
-            class_basename($this),
-            $this->getTable(),
-            $this->getKey()
+            '[API ERROR][%s] %s %s - %s (Status:%d)',
+            $context['request_id'],
+            $context['request']['method'],
+            $context['request']['url'],
+            $context['error']['message'],
+            $context['response']['status']
         );
     }
 
-    /**
-     * 获取运行时路径（兼容多版本）
-     * @return string
-     */
+    protected function emergencyLog(array $context, Throwable $e): void
+    {
+        try {
+            $logContent = json_encode([
+                'time' => date('Y-m-d H:i:s'),
+                'context' => $context,
+                'error' => $e->getMessage()
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+
+            file_put_contents(
+                $this->getRuntimePath() . 'api_emergency.log',
+                $logContent . PHP_EOL,
+                FILE_APPEND
+            );
+        } catch (Throwable $finalError) {
+            error_log('Critical logging failure: ' . $finalError->getMessage());
+        }
+    }
+    // endregion
+
+    // region 响应构建
+    protected function buildStandardResponse(Throwable $e, int $statusCode, string $requestId): Response
+    {
+        return $this->createJsonResponse(
+            $this->buildResponseBody($e, $statusCode, $requestId),
+            $statusCode
+        );
+    }
+
+    protected function buildResponseBody(Throwable $e, int $statusCode, string $requestId): array
+    {
+        return [
+            'code' => $e->getCode(),
+            'message' => $this->getClientMessage($e, $statusCode),
+            'request_id' => $requestId,
+            'timestamp' => time(),
+            'data' => null
+        ];
+    }
+
+
+    protected function createJsonResponse(array $data, int $status): Response
+    {
+        // TP6.0.0+ 参数结构
+        if ($this->isThinkPHP6()) {
+            return new \think\response\Json(
+                $data,
+                $status,
+                [],
+                $this->getJsonOptions()
+            );
+        }
+        // TP5.1-5.2 参数结构
+        return Response::create($data, 'json', $status);
+    }
+
+    protected function getJsonOptions(): int
+    {
+        try {
+            return Config::get('app.json_encode_options', JSON_UNESCAPED_UNICODE);
+        } catch (\Exception $e) {
+            return JSON_UNESCAPED_UNICODE;
+        }
+    }
+
+    protected function isThinkPHP6(): bool
+    {
+        return class_exists('\think\App') &&
+            method_exists('\think\App', 'getThinkPath') &&
+            !method_exists('\think\Response', 'create');
+    }
+
+
+    protected function isValidJson(string $str): bool
+    {
+        if (trim($str) === '') return false;
+
+        json_decode($str);
+        return json_last_error() === JSON_ERROR_NONE;
+    }
+
     protected function getRuntimePath(): string
     {
-        if (function_exists('runtime_path')) {
-            return runtime_path();
+        return app()->getRuntimePath();
+    }
+
+    protected function determineHttpStatusCode(Throwable $e): int
+    {
+        foreach ($this->httpStatusMap as $class => $code) {
+            if ($e instanceof $class) {
+                return $code;
+            }
         }
 
-        if (defined('RUNTIME_PATH')) {
-            return RUNTIME_PATH;
+        $code = $e->getCode();
+        return ($code >= 400 && $code < 600) ? $code : 500;
+    }
+
+    protected function getClientMessage(Throwable $e, int $statusCode): string
+    {
+        if (app()->isDebug()) {
+            return $e->getMessage();
         }
 
-        return dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'runtime' . DIRECTORY_SEPARATOR;
+        $defaultMessages = [
+            400 => '请求参数错误',
+            401 => '未授权访问',
+            403 => '禁止访问',
+            404 => '资源不存在',
+            500 => '服务器内部错误'
+        ];
+
+        return $defaultMessages[$statusCode] ?? '服务不可用';
+    }
+
+    protected function getFrameworkVersion(): string
+    {
+        return defined('\think\App::VERSION')
+            ? \think\App::VERSION
+            : (method_exists(app(), 'version') ? app()->version() : '5.x');
     }
 }
