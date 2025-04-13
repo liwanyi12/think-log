@@ -13,43 +13,41 @@ class Installer
         // 在 postInstall() 开头添加调试代码
         echo "[ThinkLog] Starting installation...\n";
         if (!self::isThinkPHPInstalled()) {
-            echo "[ThinkLog] ThinkPHP not detected, skipping installation\n";
             return;
         }
-
         try {
             $runtimePath = self::getThinkRuntimePath();
-            echo "[ThinkLog] Runtime path: {$runtimePath}\n";
-
             self::ensureLogDirectory($runtimePath);
             self::publishConfig();
             self::ensureJobDirectory();
-
-            echo "[ThinkLog] Installation completed successfully\n";
         } catch (\Exception $e) {
-            echo "[ThinkLog] ERROR: " . $e->getMessage() . "\n";
-            throw $e;
+            // 记录错误日志或抛出
+            error_log('ThinkLog install failed: ' . $e->getMessage());
         }
     }
 
     protected static function isThinkPHPInstalled(): bool
     {
-        // 同时检测 TP5 和 TP6/8 的入口类
         return class_exists('think\App') || class_exists('think\facade\App');
     }
 
     protected static function getThinkRuntimePath(): string
     {
-        // TP5 和 TP6/8 兼容的路径获取方式
-        if (class_exists('think\App')) {
-            return \think\App::getRuntimePath();
-        }
-
+        // TP6/8 优先检测
         if (class_exists('think\facade\App')) {
             return \think\facade\App::getRuntimePath();
         }
 
-        throw new \RuntimeException('ThinkPHP runtime path not resolvable');
+        // TP5 处理
+        if (class_exists('think\App')) {
+            if (method_exists('think\App', 'getRuntimePath')) {
+                // 某些TP5版本可能有静态方法
+                return \think\App::getRuntimePath();
+            }
+            return (new \think\App())->getRuntimePath();
+        }
+
+        throw new \RuntimeException('ThinkPHP runtime path resolver not available');
     }
 
     protected static function ensureLogDirectory(string $runtimePath)
