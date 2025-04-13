@@ -1,5 +1,6 @@
 <?php
 
+namespace Lwi\Thinklog;
 /**
  * 异步模型日志追踪 (ThinkPHP 5.x 专用版)
  * @documentation
