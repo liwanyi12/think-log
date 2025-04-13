@@ -2,28 +2,26 @@
 
 namespace Lwi\Thinklog;
 
-use think\facade\App;
+use think\App;
 use RuntimeException;
 
 class Installer
 {
-
     public static function postInstall()
     {
         try {
             if (!self::isThinkPHPInstalled()) {
-                throw new \RuntimeException(
-                    "ThinkPHP not detected. Required classes: \n" .
-                    "- think\\App (TP5)\n" .
-                    "- think\\facade\\App (TP6/8)\n" .
-                    "Current loaded classes: " . json_encode(get_declared_classes())
-                );
+                throw new \RuntimeException("ThinkPHP 5.x not detected");
             }
 
-            // 继续安装流程...
+            $runtimePath = self::getThinkRuntimePath();
+            self::ensureLogDirectory($runtimePath);
+            self::publishConfig();
+            self::ensureJobDirectory();
+
         } catch (\Exception $e) {
             file_put_contents(
-                getcwd().'/thinklog_install_error.log',
+                getcwd().'/runtime/thinklog_install_error.log',
                 date('Y-m-d H:i:s')." - ".$e->getMessage()."\n",
                 FILE_APPEND
             );
@@ -31,82 +29,100 @@ class Installer
         }
     }
 
+    /**
+     * 检测TP5环境
+     */
     protected static function isThinkPHPInstalled(): bool
     {
-        return class_exists('think\App') || class_exists('think\facade\App');
+        return class_exists('think\App') && defined('THINK_VERSION');
     }
 
+    /**
+     * 获取TP5运行时路径
+     */
     protected static function getThinkRuntimePath(): string
     {
-        // TP6/8 优先检测
-        if (class_exists('think\facade\App')) {
-            return \think\facade\App::getRuntimePath();
+        if (!self::isThinkPHPInstalled()) {
+            throw new RuntimeException('ThinkPHP 5.x not initialized');
         }
 
-        // TP5 处理
-        if (class_exists('think\App')) {
-            if (method_exists('think\App', 'getRuntimePath')) {
-                // 某些TP5版本可能有静态方法
-                return \think\App::getRuntimePath();
-            }
-            return (new \think\App())->getRuntimePath();
-        }
-
-        throw new \RuntimeException('ThinkPHP runtime path resolver not available');
+        // TP5专用路径获取方式
+        $app = new App();
+        return $app->getRuntimePath();
     }
 
+    /**
+     * 确保日志目录存在
+     */
     protected static function ensureLogDirectory(string $runtimePath)
     {
         $logDir = $runtimePath . 'api_errors';
         if (!is_dir($logDir)) {
-            mkdir($logDir, 0755, true);
-            file_put_contents($logDir . '/.gitignore', "*\n!.gitignore");
+            if (!mkdir($logDir, 0755, true)) {
+                throw new RuntimeException("Failed to create log directory: {$logDir}");
+            }
+            file_put_contents($logDir.'/.gitignore', "*\n!.gitignore");
         }
     }
 
     /**
-     * Publish package configuration if not exists
-     *
-     * @throws RuntimeException When config file operations fail
+     * 发布配置文件
      */
     protected static function publishConfig()
     {
-        $target = config_path() . 'log_async.php';
+        // TP5专用配置路径
+        $target = self::getThinkConfigPath() . 'log_async.php';
+        $source = __DIR__ . '/../config/log_async.php';
 
-        if (!file_exists($target)) {
-            $source = __DIR__ . '/../config/log_async.php';
-
-            if (!file_exists($source)) {
-                throw new RuntimeException("Missing package config template: {$source}");
-            }
-
+        if (!file_exists($target) && file_exists($source)) {
             if (!copy($source, $target)) {
-                throw new RuntimeException("Failed to copy config file to: {$target}");
+                throw new RuntimeException("Failed to publish config to: {$target}");
             }
         }
     }
 
     /**
-     * Ensure job directory exists for queue workers
-     *
-     * @throws RuntimeException When directory creation fails
+     * 确保任务目录存在
      */
     protected static function ensureJobDirectory()
     {
-
-        $jobDir = app_path() . 'common/job';
-        var_dump($jobDir); // 检查路径是否正确
+        // TP5专用应用路径
+        $jobDir = self::getThinkAppPath() . 'common/job';
 
         if (!is_dir($jobDir)) {
-            if (!mkdir($jobDir, 0755, true) && !is_dir($jobDir)) {
+            if (!mkdir($jobDir, 0755, true)) {
                 throw new RuntimeException("Failed to create job directory: {$jobDir}");
             }
+            file_put_contents($jobDir.'/.gitignore', "*\n!.gitignore");
+        }
+    }
 
-            // Add .gitignore to maintain empty directory
-            $gitignorePath = $jobDir . '/.gitignore';
-            if (file_put_contents($gitignorePath, "*\n!.gitignore") === false) {
-                throw new RuntimeException("Failed to create .gitignore in job directory");
+    /**
+     * 获取TP5配置目录
+     */
+    protected static function getThinkConfigPath(): string
+    {
+        return self::getThinkAppPath() . 'config/';
+    }
+
+    /**
+     * 获取TP5应用目录
+     */
+    protected static function getThinkAppPath(): string
+    {
+        // 默认TP5应用目录结构
+        $possiblePaths = [
+            getcwd().'/application/',
+            getcwd().'/app/',
+            dirname(__DIR__, 3).'/application/' // vendor内使用时
+        ];
+
+        foreach ($possiblePaths as $path) {
+            if (is_dir($path)) {
+                return $path;
             }
         }
+
+        throw new RuntimeException('Cannot locate ThinkPHP 5 application directory');
     }
 }
