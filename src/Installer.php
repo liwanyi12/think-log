@@ -10,19 +10,24 @@ class Installer
 
     public static function postInstall()
     {
-        // 在 postInstall() 开头添加调试代码
-        echo "[ThinkLog] Starting installation...\n";
-        if (!self::isThinkPHPInstalled()) {
-            return;
-        }
         try {
-            $runtimePath = self::getThinkRuntimePath();
-            self::ensureLogDirectory($runtimePath);
-            self::publishConfig();
-            self::ensureJobDirectory();
+            if (!self::isThinkPHPInstalled()) {
+                throw new \RuntimeException(
+                    "ThinkPHP not detected. Required classes: \n" .
+                    "- think\\App (TP5)\n" .
+                    "- think\\facade\\App (TP6/8)\n" .
+                    "Current loaded classes: " . json_encode(get_declared_classes())
+                );
+            }
+
+            // 继续安装流程...
         } catch (\Exception $e) {
-            // 记录错误日志或抛出
-            error_log('ThinkLog install failed: ' . $e->getMessage());
+            file_put_contents(
+                getcwd().'/thinklog_install_error.log',
+                date('Y-m-d H:i:s')." - ".$e->getMessage()."\n",
+                FILE_APPEND
+            );
+            throw $e;
         }
     }
 
