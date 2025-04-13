@@ -3,12 +3,7 @@
 
 
 config/log 下日志记录
-  'json' => [
-            'type' => 'file',
-            'path' => runtime_path('logs/json'),
-            'json' => true, // 自动转为JSON格式
-            'format' => '[{timestamp}] {message} {context}'
-        ]
+  
 
 
          public function index()
@@ -27,3 +22,11 @@ config/log 下日志记录
         // 模拟验证失败
         throw new \Exception('密码错误');
     }
+
+
+      'json' => [
+            'type' => 'file',
+            'path' => runtime_path('logs/json'),
+            'json' => true, // 自动转为JSON格式
+            'format' => '[{timestamp}] {message} {context}'
+        ]
