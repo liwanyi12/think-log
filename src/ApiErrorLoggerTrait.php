@@ -1,6 +1,6 @@
 <?php
 
-namespace Lwi\Thinklog;
+namespace lwi\thinklog;
 
 use think\Exception;
 use think\Response;
