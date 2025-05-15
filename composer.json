@@ -1,6 +1,6 @@
 {
     "name": "lwi/thinklog",
-    "description": "高性能日志组件 - 原生支持 PSR-3，可选 ThinkPHP 深度集成",
+    "description": "高性能日志组件 - 原生支持 PSR-3，可选 ThinkPHP 深度集成（仅支持tp6）",
     "type": "library",
     "license": "MIT",
     "keywords": [
